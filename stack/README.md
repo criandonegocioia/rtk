@@ -1,4 +1,4 @@
-# Stack global de IA (rtk + caveman + claude-mem)
+# Stack global de IA (rtk + caveman)
 
 Um instalador único, idempotente e com versões fixadas, que deixa o Claude Code de qualquer máquina com:
 
@@ -6,13 +6,16 @@ Um instalador único, idempotente e com versões fixadas, que deixa o Claude Cod
 |---|---|---|---|
 | Entrada (saída de comandos) | **rtk** `v0.51.0` | Reescreve `git`, `npm`, `docker`, `pytest`… para versões compactas — 60–90% menos tokens | `PreToolUse` → `rtk hook claude` |
 | Saída (respostas do agente) | **caveman** `v3.1.0` | Skill de resposta enxuta, sem perder termos técnicos, código e erros | `SessionStart`, `UserPromptSubmit` |
-| Memória entre sessões | **claude-mem** `13.28.0` | Resume o que aconteceu e injeta nas sessões seguintes (SQLite + Chroma local) | hooks do plugin |
 
 Vale para **todos os projetos** da máquina (escopo global em `~/.claude`), não para um repositório específico.
 
 ## Por que composição e não fusão de código
 
-As três resolvem problemas diferentes e já se encaixam pelos hooks do Claude Code — não disputam o mesmo evento. Fundir o código (Rust + Go + TypeScript) num binário só criaria um fork difícil de manter contra um upstream que publica várias versões por semana, sem ganho de capacidade. Por isso esta pasta não toca em nada do código do rtk: o fork continua sincronizável com `rtk-ai/rtk` sem conflito.
+As duas resolvem problemas diferentes e se encaixam pelos hooks do Claude Code — não disputam o mesmo evento. Fundir o código (Rust + Go + TypeScript) num binário só criaria um fork difícil de manter contra um upstream que publica várias versões por semana, sem ganho de capacidade. Por isso esta pasta não toca em nada do código do rtk: o fork continua sincronizável com `rtk-ai/rtk` sem conflito.
+
+## Por que sem claude-mem
+
+Foi avaliado e retirado: a memória curada (`MEMORY.md`) e a nativa do Claude Code já cobrem o que ele faria. Ele ainda gravaria automaticamente toda saída de ferramenta (dados de cliente inclusive) num SQLite local e injetaria contexto extra a cada sessão.
 
 ## O que fica deliberadamente desligado
 
@@ -20,9 +23,7 @@ As três resolvem problemas diferentes e já se encaixam pelos hooks do Claude C
 |---|---|
 | Proxy do caveman (`caveman enable`, `caveman-shrink`) | Reescreve `ANTHROPIC_BASE_URL` e passa as chamadas da API por um intermediário. A compressão de saída de comando já é do rtk. |
 | Hooks avulsos e regras por repositório do caveman | `--minimal` instala só o plugin; nada é escrito dentro dos seus projetos. |
-| Observer em nuvem do claude-mem (cmem) | `--provider claude` usa o seu próprio plano para gerar os resumos; os dados ficam em `~/.claude-mem`. |
-| Desligar a memória nativa do Claude Code | O claude-mem oferece isso; aqui a memória nativa (`MEMORY.md`) continua ligada. |
-| Telemetria do claude-mem (ligada por padrão) e do rtk | Desligadas explicitamente. |
+| Telemetria do rtk | Desligada explicitamente. |
 | `RTK.md` no `CLAUDE.md` global | `--hook-only`: o rtk reescreve os comandos sem gastar tokens de contexto. |
 
 ## Uso
@@ -69,16 +70,15 @@ git clone -b feature/stack-global-ia https://github.com/criandonegocioia/rtk.git
 
 - `rtk` instalado **e** é o Rust Token Killer (há um projeto homônimo, o Rust Type Kit, que não serve).
 - `rtk hook claude` registrado no `settings.json`.
-- Plugins `caveman` e `claude-mem` instalados.
+- Plugin `caveman` instalado.
 - Nenhum `ANTHROPIC_BASE_URL` / `_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL` no `settings.json` (sinal de proxy ativo).
-- `CLAUDE_CODE_DISABLE_AUTO_MEMORY` **não** está ligado.
-- Telemetria do claude-mem desligada.
+- `CLAUDE_CODE_DISABLE_AUTO_MEMORY` **não** está ligado (a memória nativa continua valendo).
 
 Ele aponta o problema e o comando que corrige, mas não remove nada sozinho: um `ANTHROPIC_BASE_URL` pode ter sido colocado de propósito por outro motivo.
 
 ## Atualizar versões
 
-Altere as três variáveis no topo de `bootstrap.sh` e `bootstrap.ps1` (`RTK_VERSION`, `CAVEMAN_REF`, `CLAUDE_MEM_VERSION`), rode `--dry-run` e depois a instalação numa máquina de teste antes de fazer merge.
+Altere as duas variáveis no topo de `bootstrap.sh` e `bootstrap.ps1` (`RTK_VERSION`, `CAVEMAN_REF`), rode `--dry-run` e depois a instalação numa máquina de teste antes de fazer merge.
 
 Limitação conhecida: o instalador do caveman fica fixado em `v3.1.0`, mas o `claude plugin marketplace add` que ele executa sempre puxa o plugin da branch principal do caveman.
 
@@ -87,7 +87,6 @@ Limitação conhecida: o instalador do caveman fica fixado em `v3.1.0`, mas o `c
 ```bash
 rtk init -g --uninstall
 npx -y github:JuliusBrussee/caveman -- --uninstall
-npx claude-mem uninstall
 ```
 
 No Windows, remova também a tarefa: `Unregister-ScheduledTask -TaskName IA-Stack-Bootstrap -Confirm:$false`.

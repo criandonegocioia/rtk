@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
-# Stack global de IA para Claude Code: rtk + caveman (só skill) + claude-mem (local).
+# Stack global de IA para Claude Code: rtk + caveman (só skill).
 # Uso: ./bootstrap.sh [--check] [--dry-run]
 set -euo pipefail
 
 RTK_VERSION="v0.51.0"
 CAVEMAN_REF="v3.1.0"
-CLAUDE_MEM_VERSION="13.28.0"
 
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 SETTINGS="$CLAUDE_DIR/settings.json"
 RTK_BIN_DIR="${RTK_INSTALL_DIR:-$HOME/.local/bin}"
-CLAUDE_MEM_DIR="${CLAUDE_MEM_DATA_DIR:-$HOME/.claude-mem}"
 
 MODE=install
 DRY_RUN=0
@@ -26,7 +24,6 @@ done
 export PATH="$RTK_BIN_DIR:$PATH"
 # Sem isso o `rtk init` pode travar esperando resposta de telemetria num pseudo-TTY.
 export RTK_TELEMETRY_DISABLED=1
-export CLAUDE_MEM_ONLINE_OPTIN=false
 
 info() { printf '\033[36m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m[aviso]\033[0m %s\n' "$*" >&2; }
@@ -43,9 +40,6 @@ run() {
 
 rtk_version() { rtk --version 2>/dev/null | awk '{print $2}'; }
 
-claude_mem_telemetry_off() {
-  [ -f "$CLAUDE_MEM_DIR/telemetry.json" ] && grep -Eq '"enabled" *: *false' "$CLAUDE_MEM_DIR/telemetry.json"
-}
 
 plugin_installed() {
   if need claude; then
@@ -77,19 +71,6 @@ install_caveman() {
   run npx -y "github:JuliusBrussee/caveman#$CAVEMAN_REF" -- --only claude --minimal --non-interactive
 }
 
-install_claude_mem() {
-  if plugin_installed claude-mem thedotmack; then
-    info "claude-mem já instalado"
-  else
-    info "instalando claude-mem $CLAUDE_MEM_VERSION (provider=claude, sem nuvem cmem, memória nativa mantida)"
-    # stdin fora do TTY força o caminho não interativo, que mantém a auto-memória nativa ligada.
-    run npx -y "claude-mem@$CLAUDE_MEM_VERSION" install --ide claude-code --provider claude </dev/null
-  fi
-  if ! claude_mem_telemetry_off; then
-    run npx -y "claude-mem@$CLAUDE_MEM_VERSION" telemetry disable </dev/null
-  fi
-}
-
 check_all() {
   local ok=0
 
@@ -111,12 +92,6 @@ check_all() {
     fail "plugin caveman não instalado"; ok=1
   fi
 
-  if plugin_installed claude-mem thedotmack; then
-    info "ok: plugin claude-mem"
-  else
-    fail "plugin claude-mem não instalado"; ok=1
-  fi
-
   if [ -f "$SETTINGS" ] && grep -Eq 'ANTHROPIC_BASE_URL|_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL' "$SETTINGS"; then
     fail "settings.json redireciona a API (provável 'caveman enable'). Desfaça com: caveman disable --all"; ok=1
   else
@@ -132,11 +107,6 @@ check_all() {
     info "ok: memória nativa do Claude Code ligada"
   fi
 
-  if claude_mem_telemetry_off; then
-    info "ok: telemetria do claude-mem desligada"
-  else
-    fail "telemetria do claude-mem não está desligada. Rode: npx claude-mem telemetry disable"; ok=1
-  fi
 
   return $ok
 }
@@ -151,7 +121,6 @@ need npx || { fail "Node.js >= 20 é obrigatório (npx não encontrado)"; exit 1
 
 install_rtk
 install_caveman
-install_claude_mem
 
 if [ "$DRY_RUN" = 1 ]; then
   info "dry-run concluído; nada foi alterado"
