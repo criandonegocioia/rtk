@@ -1,5 +1,5 @@
 <#
-Stack global de IA para Claude Code: rtk + caveman (só skill) + claude-mem (local).
+Stack global de IA para Claude Code: rtk + caveman (só skill).
 Uso: .\bootstrap.ps1 [-Check] [-DryRun] [-RegisterLogonTask]
 #>
 [CmdletBinding()]
@@ -14,19 +14,16 @@ $ErrorActionPreference = 'Stop'
 
 $RtkVersion = 'v0.51.0'
 $CavemanRef = 'v3.1.0'
-$ClaudeMemVersion = '13.28.0'
 
 $ClaudeDir = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $env:USERPROFILE '.claude' }
 $Settings = Join-Path $ClaudeDir 'settings.json'
 $RtkBinDir = if ($env:RTK_INSTALL_DIR) { $env:RTK_INSTALL_DIR } else { Join-Path $env:USERPROFILE '.local\bin' }
-$ClaudeMemDir = if ($env:CLAUDE_MEM_DATA_DIR) { $env:CLAUDE_MEM_DATA_DIR } else { Join-Path $env:USERPROFILE '.claude-mem' }
 $StackHome = Join-Path $env:LOCALAPPDATA 'ia-stack'
 $TaskName = 'IA-Stack-Bootstrap'
 
 $env:Path = "$RtkBinDir;$env:Path"
 # Sem isso o `rtk init` pode travar esperando resposta de telemetria num pseudo-TTY.
 $env:RTK_TELEMETRY_DISABLED = '1'
-$env:CLAUDE_MEM_ONLINE_OPTIN = 'false'
 
 function Info($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Warn($msg) { Write-Host "[aviso] $msg" -ForegroundColor Yellow }
@@ -68,12 +65,6 @@ function Test-PluginInstalled($Name, $MarketplaceDir) {
 function Test-SettingsMatch($Pattern) {
     if (-not (Test-Path $Settings)) { return $false }
     return [bool](Select-String -Path $Settings -Pattern $Pattern -Quiet)
-}
-
-function Test-ClaudeMemTelemetryOff {
-    $file = Join-Path $ClaudeMemDir 'telemetry.json'
-    if (-not (Test-Path $file)) { return $false }
-    return [bool](Select-String -Path $file -Pattern '"enabled"\s*:\s*false' -Quiet)
 }
 
 function Install-Rtk {
@@ -127,23 +118,6 @@ function Install-Caveman {
     }
 }
 
-function Install-ClaudeMem {
-    if (Test-PluginInstalled 'claude-mem' 'thedotmack') {
-        Info 'claude-mem já instalado'
-    } else {
-        Info "instalando claude-mem $ClaudeMemVersion (provider=claude, sem nuvem cmem, memória nativa mantida)"
-        # stdin redirecionado força o caminho não interativo, que mantém a auto-memória nativa ligada.
-        Invoke-Step "npx claude-mem@$ClaudeMemVersion install --ide claude-code --provider claude" {
-            $null | & npx.cmd -y "claude-mem@$ClaudeMemVersion" install --ide claude-code --provider claude
-        }
-    }
-    if (-not (Test-ClaudeMemTelemetryOff)) {
-        Invoke-Step "npx claude-mem@$ClaudeMemVersion telemetry disable" {
-            $null | & npx.cmd -y "claude-mem@$ClaudeMemVersion" telemetry disable
-        }
-    }
-}
-
 function Test-Stack {
     $ok = $true
 
@@ -156,9 +130,6 @@ function Test-Stack {
     if (Test-PluginInstalled 'caveman' 'caveman') { Info 'ok: plugin caveman' }
     else { Fail 'plugin caveman não instalado'; $ok = $false }
 
-    if (Test-PluginInstalled 'claude-mem' 'thedotmack') { Info 'ok: plugin claude-mem' }
-    else { Fail 'plugin claude-mem não instalado'; $ok = $false }
-
     if (Test-SettingsMatch 'ANTHROPIC_BASE_URL|_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL') {
         Fail "settings.json redireciona a API (provável 'caveman enable'). Desfaça com: caveman disable --all"; $ok = $false
     } else { Info 'ok: chamadas de API vão direto para a Anthropic (sem proxy)' }
@@ -168,8 +139,6 @@ function Test-Stack {
         Fail "memória nativa do Claude Code desligada. Remova CLAUDE_CODE_DISABLE_AUTO_MEMORY do bloco env de $Settings"; $ok = $false
     } else { Info 'ok: memória nativa do Claude Code ligada' }
 
-    if (Test-ClaudeMemTelemetryOff) { Info 'ok: telemetria do claude-mem desligada' }
-    else { Fail 'telemetria do claude-mem não está desligada. Rode: npx claude-mem telemetry disable'; $ok = $false }
 
     return $ok
 }
@@ -206,7 +175,6 @@ try {
 
     Install-Rtk
     Install-Caveman
-    Install-ClaudeMem
 
     if ($DryRun) { Info 'dry-run concluído; nada foi alterado'; exit 0 }
 
